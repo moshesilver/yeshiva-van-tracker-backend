@@ -1,0 +1,39 @@
+# Dependency directories
+node_modules/
+jspm_packages/
+
+# Local databases & SQLite runtime artifacts
+*.db
+*.db-journal
+dev.db
+dev.db-journal
+
+# Environment secrets
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Auto-generated Prisma Client (Custom Target)
+src/generated/prisma/
+
+# Compilation outputs & build artifacts
+dist/
+build/
+bin/
+obj/
+out/
+
+# Debug and runtime logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+*.log
+
+# Editor & System specific files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

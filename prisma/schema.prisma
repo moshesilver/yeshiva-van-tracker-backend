@@ -1,0 +1,51 @@
+datasource db {
+  provider = "sqlite"
+}
+
+generator client {
+  provider            = "prisma-client-js"
+  output              = "../src/generated/prisma"
+  importFileExtension = "ts"
+}
+
+model SystemConfig {
+  id                Int    @id @default(1)
+  adminPasswordHash String
+}
+
+// Every human driving a van gets a permanent record here
+model Driver {
+  id       String    @id @default(uuid())
+  name     String    @unique // Enforces unique names so we don't duplicate people
+  trips    Trip[]
+  expenses Expense[]
+}
+
+model Trip {
+  id            String   @id @default(uuid())
+  startDateTime DateTime
+  notes         String?
+
+  // Relational link to the Driver
+  driverId String
+  driver   Driver @relation(fields: [driverId], references: [id])
+
+  expenses Expense[]
+}
+
+model Expense {
+  id       String   @id @default(uuid())
+  type     String
+  amount   Float
+  dateTime DateTime
+  status   String
+  notes    String?
+
+  // The expense is tied directly to the person's ID
+  driverId String
+  driver   Driver @relation(fields: [driverId], references: [id])
+
+  // Optional link back to the specific trip for time-slice context
+  tripId String?
+  trip   Trip?   @relation(fields: [tripId], references: [id])
+}
