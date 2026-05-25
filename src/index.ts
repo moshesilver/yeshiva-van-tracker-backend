@@ -1,3 +1,4 @@
+import bcrypt from 'bcrypt';
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -47,7 +48,7 @@ app.get('/api/drivers', async (req, res) => {
 });
 
 // ==========================================
-// 🔑 TRIP MANAGEMENT ENDPOINTS
+// 🚘 TRIP MANAGEMENT ENDPOINTS
 // ==========================================
 
 // Log a New Trip (Create)
@@ -248,6 +249,47 @@ app.get('/api/expenses/match-driver', async (req, res) => {
 		res.json({ matchingTrip });
 	} catch (error) {
 		res.status(500).json({ error: 'Driver lookup engine failed' });
+	}
+});
+
+// ==========================================
+// 🔑 LOGIN MANAGEMENT ENDPOINTS
+// ==========================================
+
+// Global Login Gatekeeper
+app.post('/api/login', async (req, res) => {
+	try {
+		const { password } = req.body;
+
+		if (!password) {
+			res.status(400).json({ success: false, message: 'Password is required' });
+			return;
+		}
+
+		// Grab our single configuration row from the database
+		const config = await prisma.systemConfig.findUnique({
+			where: { id: 1 }
+		});
+
+		if (!config) {
+			// Fallback safety if database wasn't seeded yet
+			res
+				.status(500)
+				.json({ success: false, message: 'System not configured' });
+			return;
+		}
+
+		// Compare the plaintext password input against our stored secure hash
+		const isMatch = await bcrypt.compare(password, config.adminPasswordHash);
+
+		if (isMatch) {
+			res.json({ success: true, token: 'authenticated-session-token' });
+		} else {
+			res.status(401).json({ success: false, message: 'Invalid password!' });
+		}
+	} catch (error) {
+		console.error('Login system error:', error);
+		res.status(500).json({ success: false, message: 'Internal Server Error' });
 	}
 });
 
