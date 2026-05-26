@@ -105,9 +105,9 @@ app.get('/api/trips', async (req, res) => {
 // 💸 EXPENSE MANAGEMENT ENDPOINTS
 // ==========================================
 
-// Log a New Expense (Interactive Suggestion & Manual Flow)
 app.post('/api/expenses', async (req, res) => {
 	try {
+		// 1. Pull the flat properties sent directly by api.createExpense()
 		const {
 			type,
 			amount,
@@ -119,12 +119,21 @@ app.post('/api/expenses', async (req, res) => {
 			confirmSuggestedDriver
 		} = req.body;
 
+		// 2. Simple numeric extraction fallback check
+		const parsedAmount = parseFloat(amount);
+		if (isNaN(parsedAmount)) {
+			console.error('Expense logging failed: Amount received:', amount);
+			return res.status(400).json({
+				success: false,
+				message: 'Invalid numeric amount received.'
+			});
+		}
+
 		const expenseDate = new Date(dateTime || Date.now());
 		let targetDriverId: string | null = null;
 		let resolvedTripId: string | null = tripId || null;
 
-		// SCENARIO 1: Manual Driver Selection OR Confirmed Suggestion from Frontend
-		// The frontend sends down a string name (either chosen from a picker, typed, or accepted from a suggestion modal)
+		// SCENARIO 1: Manual Driver Selection OR Confirmed Suggestion
 		if (manualDriverName && manualDriverName.trim()) {
 			const driver = await prisma.driver.upsert({
 				where: { name: manualDriverName.trim() },
@@ -133,7 +142,6 @@ app.post('/api/expenses', async (req, res) => {
 			});
 			targetDriverId = driver.id;
 
-			// If the user accepted a suggestion, the frontend will pass the tripId along too
 			if (!resolvedTripId && confirmSuggestedDriver) {
 				const matchingTrip = await prisma.trip.findFirst({
 					where: {
@@ -145,7 +153,7 @@ app.post('/api/expenses', async (req, res) => {
 				if (matchingTrip) resolvedTripId = matchingTrip.id;
 			}
 		}
-		// SCENARIO 2: Frontend linked a Trip directly via dropdown
+		// SCENARIO 2: Frontend linked a Trip directly
 		else if (resolvedTripId) {
 			const existingTrip = await prisma.trip.findUnique({
 				where: { id: resolvedTripId },
@@ -156,7 +164,7 @@ app.post('/api/expenses', async (req, res) => {
 			}
 		}
 
-		// SCENARIO 3: No driver information provided -> Route directly to Unassigned Queue
+		// SCENARIO 3: Route directly to Unassigned Queue fallback
 		if (!targetDriverId) {
 			const fallbackDriver = await prisma.driver.upsert({
 				where: { name: 'Unassigned Fleet Driver' },
@@ -166,10 +174,11 @@ app.post('/api/expenses', async (req, res) => {
 			targetDriverId = fallbackDriver.id;
 		}
 
+		// 3. Write securely to database logs matching schema parameters exactly
 		const newExpense = await prisma.expense.create({
 			data: {
 				type,
-				amount: parseFloat(amount),
+				amount: parsedAmount,
 				dateTime: expenseDate,
 				status: status || 'Unpaid',
 				notes,
@@ -203,6 +212,45 @@ app.get('/api/expenses', async (req, res) => {
 	} catch (error) {
 		console.error('Error fetching expenses:', error);
 		res.status(500).json({ error: 'Failed to retrieve expenses' });
+	}
+});
+
+// Update an existing Expense (e.g., re-assigning from the Triage Queue)
+app.put('/api/expenses/:id', async (req, res) => {
+	try {
+		const { id } = req.params;
+		const { manualDriverName } = req.body;
+
+		if (!manualDriverName || !manualDriverName.trim()) {
+			return res
+				.status(400)
+				.json({ error: 'Driver name is required for reassignment' });
+		}
+
+		// Find or create the real driver being assigned
+		const driver = await prisma.driver.upsert({
+			where: { name: manualDriverName.trim() },
+			update: {},
+			create: { name: manualDriverName.trim() }
+		});
+
+		// Check if there is an active trip for this driver around the same time if needed,
+		// but for a direct triage override, we link the driver directly.
+		const updatedExpense = await prisma.expense.update({
+			where: { id: id },
+			data: {
+				driverId: driver.id
+			},
+			include: {
+				driver: true,
+				trip: true
+			}
+		});
+
+		res.json(updatedExpense);
+	} catch (error) {
+		console.error('Error updating expense assignment:', error);
+		res.status(500).json({ error: 'Failed to update expense assignment' });
 	}
 });
 
